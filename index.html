@@ -60,6 +60,8 @@
     </header>
 
     <button id="btn-historia" type="button" class="historia">▶ Explicación narrada</button>
+    <button id="btn-limites" type="button" class="limites">▶ Los límites de PSO (cordillera)</button>
+    <p id="capitulos-de" class="nota-capitulos">Capítulos: explicación básica</p>
     <div class="capitulos" aria-label="Capítulos de la explicación (Av Pág / Re Pág)">
       <button type="button" data-capitulo="0"><b>1</b>Terreno</button>
       <button type="button" data-capitulo="1"><b>2</b>Inicio</button>
@@ -139,10 +141,16 @@
             <option value="griewank">Griewank</option>
             <option value="esfera">Esfera</option>
             <option value="picos">Picos (buscar el máximo)</option>
+            <option value="cordillera">Cordillera (máximo o mínimo)</option>
           </select></label>
         <label>Semilla
           <span class="semilla"><input id="in-semilla" type="number" min="1" max="999999" value="7"><button id="btn-semilla" type="button" title="Otra semilla">Otra</button></span></label>
       </div>
+      <label id="fila-objetivo" class="oculto">Buscar
+        <select id="sel-objetivo">
+          <option value="max">El máximo: la cima más alta</option>
+          <option value="min">El mínimo: el valle más profundo</option>
+        </select></label>
     </details>
 
     <details class="solo-sim" open>
@@ -172,8 +180,8 @@
     </details>
 
     <footer class="atajos">
-      <kbd>H</kbd> explicación · <kbd>Av Pág</kbd><kbd>Re Pág</kbd> capítulos · <kbd>Espacio</kbd> iniciar/pausar · <kbd>N</kbd> paso · <kbd>R</kbd> reiniciar ·
-      <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> escenarios · <kbd>C</kbd> cámara · <kbd>G</kbd> vista 3D · <kbd>D</kbd> 3D grande · <kbd>X</kbd> exploración · <kbd>B</kbd> bandada · <kbd>V</kbd> fuerzas · <kbd>J</kbd> reto · <kbd>M</kbd> silenciar · <kbd>F</kbd> pantalla completa · <kbd>Esc</kbd> salir del modo cine
+      <kbd>H</kbd> explicación · <kbd>L</kbd> límites de PSO · <kbd>Av Pág</kbd><kbd>Re Pág</kbd> capítulos · <kbd>Espacio</kbd> iniciar/pausar · <kbd>N</kbd> paso · <kbd>R</kbd> reiniciar ·
+      <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> escenarios · <kbd>C</kbd> cámara · <kbd>G</kbd> vista 3D · <kbd>D</kbd> 3D grande · <kbd>X</kbd> exploración · <kbd>B</kbd> bandada · <kbd>O</kbd> máximo/mínimo · <kbd>V</kbd> fuerzas · <kbd>J</kbd> reto · <kbd>M</kbd> silenciar · <kbd>F</kbd> pantalla completa · <kbd>Esc</kbd> salir del modo cine
     </footer>
   </aside>
 

@@ -17,7 +17,30 @@
 (function () {
   'use strict';
 
-  const CLAVES = ['rastrigin', 'esfera', 'ackley', 'himmelblau', 'griewank', 'picos'];
+  const CLAVES = ['rastrigin', 'esfera', 'ackley', 'himmelblau', 'griewank', 'picos', 'cordillera'];
+
+  /** Número de JavaScript escrito como decimal válido en GLSL (siempre con punto). */
+  function glsl(v) {
+    const s = String(v);
+    return /[.e]/.test(s) ? `(${s})` : `(${s}.0)`;
+  }
+
+  // La cordillera se escribe en GLSL a partir de los mismos datos de pso.js (una sola fuente de verdad).
+  const DATOS_CORDILLERA = window.PSO && window.PSO.FUNCIONES.cordillera;
+  const CORDILLERA = DATOS_CORDILLERA
+    ? `float cordillera(float x, float y) {
+        float s = ${glsl(DATOS_CORDILLERA.ondas[0])} * sin(0.9 * x) * cos(0.8 * y)
+                + ${glsl(DATOS_CORDILLERA.ondas[1])} * sin(2.1 * x + 1.3 * y) * cos(1.1 * x - 1.7 * y)
+                + ${glsl(DATOS_CORDILLERA.ondas[2])} * sin(3.4 * x + 0.5) * sin(3.1 * y);
+        ${DATOS_CORDILLERA.montes
+          .map(
+            ([a, b, h, w]) =>
+              `s += ${glsl(h)} * exp(-((x - ${glsl(a)}) * (x - ${glsl(a)}) + (y - ${glsl(b)}) * (y - ${glsl(b)})) / ${glsl(2 * w * w)});`
+          )
+          .join('\n        ')}
+        return s;
+      }`
+    : 'float cordillera(float x, float y) { return 0.0; }';
   const LADO_EXPLORACION = 256;
   const DATOS_POR_PUNTO = 5; // x, y, tamaño en píxeles, opacidad, tipo (0 partícula, 1 halo del gBest)
 
@@ -55,9 +78,12 @@
 
     const float TAU = 6.283185307179586;
 
+    ${CORDILLERA}
+
     float f(vec2 p) {
       float x = p.x;
       float y = p.y;
+      if (uFuncion == 6) return cordillera(x, y);
       if (uFuncion == 0) return 20.0 + x * x + y * y - 10.0 * (cos(TAU * x) + cos(TAU * y));
       if (uFuncion == 1) return x * x + y * y;
       if (uFuncion == 2) return -20.0 * exp(-0.2 * sqrt(0.5 * (x * x + y * y)))
@@ -477,7 +503,7 @@
           }
 
           // 1. El mapa solo se recalcula si cambió la cámara, la función o lo que se muestra.
-          const clave = [v.funcion, v.cx, v.cy, v.mitad, v.bajo, v.rango, v.relieve, v.explorar].join('|');
+          const clave = [v.funcion, v.maximizar, v.cx, v.cy, v.mitad, v.bajo, v.rango, v.relieve, v.explorar].join('|');
           if (clave !== claveMapa) {
             gl.useProgram(progMapa.p);
             if (!fijarComunes(gl, progMapa, v)) return false;

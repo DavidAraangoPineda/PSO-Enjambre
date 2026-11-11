@@ -1,7 +1,63 @@
 // Pruebas del algoritmo. Ejecutar con: node --test tests
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Enjambre, ESCENARIOS, FUNCIONES } = require('../js/pso.js');
+const { Enjambre, ESCENARIOS, FUNCIONES, fijarObjetivo } = require('../js/pso.js');
+
+/** Mejor valor en una rejilla fina (para comprobar que el óptimo guardado es el global). */
+function mejorEnRejilla(F, signo, n = 600) {
+  const [a, b] = F.dominio;
+  let mejor = -Infinity;
+  for (let i = 0; i <= n; i++) {
+    for (let j = 0; j <= n; j++) {
+      const v = signo * F.f(a + ((b - a) * i) / n, a + ((b - a) * j) / n);
+      if (v > mejor) mejor = v;
+    }
+  }
+  return signo * mejor;
+}
+
+test('la cordillera tiene bien guardados su máximo y su mínimo globales', () => {
+  const F = FUNCIONES.cordillera;
+  for (const [objetivo, signo] of [['max', 1], ['min', -1]]) {
+    assert.ok(fijarObjetivo('cordillera', objetivo));
+    assert.equal(F.objetivo, objetivo);
+    const enRejilla = mejorEnRejilla(F, signo);
+    // Ningún punto de la rejilla supera al óptimo guardado.
+    assert.ok(signo * F.optimo.f >= signo * enRejilla - 1e-9, `${objetivo}: guardado ${F.optimo.f}, rejilla ${enRejilla}`);
+  }
+  fijarObjetivo('cordillera', 'max');
+});
+
+test('datos de la explicación de límites: la semilla 7 cae en una trampa y la semilla guardada acierta', () => {
+  const F = FUNCIONES.cordillera;
+  for (const objetivo of ['max', 'min']) {
+    fijarObjetivo('cordillera', objetivo);
+    const llega = (g) => Math.hypot(g.x - F.optimo.x, g.y - F.optimo.y) < 0.05;
+    const falla = new Enjambre({ ...ESCENARIOS.B, funcion: 'cordillera', semilla: 7 }).ejecutar();
+    assert.ok(!llega(falla), `${objetivo}: la semilla 7 no debería llegar`);
+    const enTrampa = F.trampas.some((t) => Math.hypot(falla.x - t.x, falla.y - t.y) < 0.2);
+    assert.ok(enTrampa, `${objetivo}: la semilla 7 terminó en (${falla.x}, ${falla.y}), que no es una trampa`);
+    const acierta = new Enjambre({ ...ESCENARIOS.B, funcion: 'cordillera', semilla: F.semillaQueAcierta }).ejecutar();
+    assert.ok(llega(acierta), `${objetivo}: la semilla ${F.semillaQueAcierta} debería llegar`);
+  }
+  fijarObjetivo('cordillera', 'max');
+});
+
+test('fijarObjetivo solo acepta funciones que permiten elegir', () => {
+  assert.equal(fijarObjetivo('rastrigin', 'max'), false);
+  assert.equal(FUNCIONES.rastrigin.objetivo, 'min');
+  assert.equal(fijarObjetivo('cordillera', 'otro'), false);
+});
+
+test('en la cordillera el enjambre maximiza o minimiza según el objetivo', () => {
+  for (const [objetivo, mejora] of [['max', (a, b) => a >= b], ['min', (a, b) => a <= b]]) {
+    fijarObjetivo('cordillera', objetivo);
+    const e = new Enjambre({ funcion: 'cordillera', semilla: 3 });
+    e.ejecutar();
+    for (let i = 1; i < e.historial.length; i++) assert.ok(mejora(e.historial[i].gBest, e.historial[i - 1].gBest));
+  }
+  fijarObjetivo('cordillera', 'max');
+});
 
 test('cada función alcanza su valor óptimo en sus óptimos globales', () => {
   for (const [clave, F] of Object.entries(FUNCIONES)) {

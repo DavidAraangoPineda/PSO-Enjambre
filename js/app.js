@@ -98,6 +98,8 @@
     destacarInicial: -1, // capítulo 2: partícula cuya posición y velocidad inicial se muestran
     escalonAparicion: 28, // ms entre la aparición de una partícula y la siguiente
     camino: null, // remate final: { t0 } mientras se dibuja el camino que recorrió el gBest
+    marcas: [], // explicación de límites: el óptimo verdadero y las trampas, marcados en el mapa
+    limites: [], // explicación de límites: las limitaciones que se van agregando a la tarjeta
     camManual: null, // vista elegida por el usuario con la rueda o arrastrando el mapa
     verRelieve: true, // sombreado del mapa según la pendiente
     verExploracion: false, // mostrar en gris lo que el enjambre nunca visitó
@@ -529,6 +531,10 @@
     reiniciarExploracion();
     $('formula').textContent = FUNCIONES[estado.funcion].formula;
     $('leyenda-3d').textContent = maximizando() ? '(altura = f)' : '(altura = log(1 + f))';
+    // El selector de máximo o mínimo solo aparece en las funciones que permiten ambos.
+    const F = FUNCIONES[estado.funcion];
+    $('fila-objetivo').classList.toggle('oculto', !F.objetivos);
+    if (F.objetivos) $('sel-objetivo').value = F.objetivo;
   }
 
   function ajustarTamano() {
@@ -629,6 +635,7 @@
     estado.destacarInicial = -1;
     estado.escalonAparicion = 28;
     estado.camino = null;
+    if (!estado.historia) estado.marcas = []; // las marcas de la explicación de límites
     estado.verExploracion = $('chk-exploracion').checked;
     reiniciarExploracion();
     $('resumen').classList.remove('visible');
@@ -907,6 +914,7 @@
       n,
       vista: c,
       funcion: estado.funcion,
+      objetivo: F.objetivo, // si cambia entre máximo y mínimo, la altura dibujada cambia
       z,
       bajo,
       rango,
@@ -927,6 +935,7 @@
     return (
       m &&
       m.funcion === estado.funcion &&
+      m.objetivo === FUNCIONES[estado.funcion].objetivo &&
       Math.abs(m.vista.cx - c.cx) <= c.mitad * 0.004 &&
       Math.abs(m.vista.cy - c.cy) <= c.mitad * 0.004 &&
       Math.abs(Math.log(m.vista.mitad / c.mitad)) <= 0.008
@@ -1427,6 +1436,8 @@
     griewank: (x, y) => `1 + (${par(x)}² + ${par(y)}²)/4000 − cos(${par(x)})·cos(${par(y)}/√2)`,
     picos: (x, y) =>
       `3(1 − ${par(x)})²·e^(−${par(x)}² − (${par(y)} + 1)²) − 10(${par(x)}/5 − ${par(x)}³ − ${par(y)}⁵)·e^(−${par(x)}² − ${par(y)}²) − ⅓·e^(−(${par(x)} + 1)² − ${par(y)}²)`,
+    cordillera: (x, y) =>
+      `Σ de las ${FUNCIONES.cordillera.montes.length} montañas y valles en (${par(x)}, ${par(y)}) + ondulaciones`,
   };
   let htmlFormula = '';
 
@@ -1528,6 +1539,7 @@
     if (enReto) dibujarIntentos();
 
     if (estado.resaltarDominio) dibujarDominio(ahora);
+    if (estado.marcas.length && !enReto) dibujarMarcas(ahora); // también con el terreno vacío
     const verEnjambre = (!enReto || estado.reto.fase === 'enjambre' || estado.reto.fase === 'fin') && !estado.ocultarParticulas;
     if (!verEnjambre) return;
 
@@ -1589,6 +1601,27 @@
 
     const [ix, iy] = aPantalla(pts[0].x, pts[0].y);
     texto(`inicio · f = ${fmt(pts[0].gBest, 2)}`, ix, iy - 14, '#ffffff', 13, 700, 'center');
+  }
+
+  /** Explicación de límites: anillo dorado en el óptimo verdadero y anillos punteados en las trampas. */
+  function dibujarMarcas(ahora) {
+    for (const m of estado.marcas) {
+      const [sx, sy] = aPantalla(m.x, m.y);
+      const esOptimo = m.tipo === 'optimo';
+      const color = esOptimo ? COLOR.dorado : '#ffffff';
+      const radio = 17 + (esOptimo ? 3 * Math.sin(ahora / 260) : 0);
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = esOptimo ? 3 : 2;
+      if (!esOptimo) ctx.setLineDash([6, 5]);
+      ctx.shadowColor = color;
+      ctx.shadowBlur = esOptimo ? 14 : 0;
+      ctx.beginPath();
+      ctx.arc(sx, sy, radio, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      texto(m.texto, sx, sy - radio - 10, color, 14, 700, 'center');
+    }
   }
 
   /** Borde iluminado de la zona donde se reparten las partículas al inicio. */
@@ -2193,7 +2226,7 @@
   }
 
   function marcarModo(id) {
-    for (const b of ['btn-modo-sim', 'btn-modo-reto', 'btn-historia']) $(b).classList.toggle('activo', b === id);
+    for (const b of ['btn-modo-sim', 'btn-modo-reto', 'btn-historia', 'btn-limites']) $(b).classList.toggle('activo', b === id);
   }
 
   function iniciarSimulacion() {
@@ -2351,6 +2384,7 @@
 
   /** Deshace lo que la narración cambia temporalmente (cámara lenta, etiquetas, velocidad...). */
   function restaurarEscena() {
+    estado.marcas = [];
     estado.congelado = false;
     estado.fuerzasPaso = 4;
     estado.etiquetasF = false;
@@ -2464,12 +2498,40 @@
 
   // ---------------------------------------------------------------- capítulos
 
-  const CAPITULOS = [
-    { titulo: 'El terreno', ejecutar: capituloTerreno },
-    { titulo: 'Dónde empiezan', ejecutar: capituloInicio },
-    { titulo: 'Las fuerzas', ejecutar: capituloFuerzas },
-    { titulo: 'Todas a la vez', ejecutar: capituloResultado },
-  ];
+  // Dos explicaciones narradas, cada una con 4 capítulos. Av Pág y los botones 1–4
+  // controlan la que esté activa.
+  const HISTORIAS = {
+    basica: {
+      boton: 'btn-historia',
+      capitulos: [
+        { titulo: 'El terreno', corto: 'Terreno', ejecutar: capituloTerreno },
+        { titulo: 'Dónde empiezan', corto: 'Inicio', ejecutar: capituloInicio },
+        { titulo: 'Las fuerzas', corto: 'Fuerzas', ejecutar: capituloFuerzas },
+        { titulo: 'Todas a la vez', corto: 'Resultado', ejecutar: capituloResultado },
+      ],
+    },
+    limites: {
+      boton: 'btn-limites',
+      capitulos: [
+        { titulo: 'Una cordillera', corto: 'Cordillera', ejecutar: limitesCordillera },
+        { titulo: 'La trampa', corto: 'Trampa', ejecutar: limitesTrampa },
+        { titulo: 'El azar y los parámetros', corto: 'Azar', ejecutar: limitesAzar },
+        { titulo: 'Más partículas, más costo', corto: 'Costo', ejecutar: limitesCosto },
+      ],
+    },
+  };
+  let historiaActual = 'basica';
+  const CAPITULOS = new Proxy([], { get: (_, prop) => HISTORIAS[historiaActual].capitulos[prop] });
+
+  /** Activa una de las dos explicaciones y pone sus nombres en los botones 1–4. */
+  function elegirHistoria(clave) {
+    historiaActual = clave;
+    document.querySelectorAll('[data-capitulo]').forEach((b) => {
+      const c = HISTORIAS[clave].capitulos[Number(b.dataset.capitulo)];
+      b.innerHTML = `<b>${Number(b.dataset.capitulo) + 1}</b>${c.corto}`;
+    });
+    $('capitulos-de').textContent = clave === 'limites' ? 'Capítulos: los límites de PSO' : 'Capítulos: explicación básica';
+  }
 
   function marcarCapitulo(k) {
     document.querySelectorAll('[data-capitulo]').forEach((b) => {
@@ -2490,8 +2552,15 @@
     $('hud-capitulo').classList.remove('visible');
   }
 
-  /** H: toda la explicación de corrido. */
+  /** H: toda la explicación básica de corrido. */
   function iniciarHistoria() {
+    elegirHistoria('basica');
+    reproducirCapitulos(0, CAPITULOS.length - 1);
+  }
+
+  /** L: la explicación de los límites de PSO, sobre la cordillera, de corrido. */
+  function iniciarLimites() {
+    elegirHistoria('limites');
     reproducirCapitulos(0, CAPITULOS.length - 1);
   }
 
@@ -2540,7 +2609,7 @@
     document.body.classList.remove('reto');
     modoCine(true);
     ajustarTamano();
-    marcarModo('btn-historia');
+    marcarModo(HISTORIAS[historiaActual].boton);
 
     try {
       revisarVozDeEdge();
@@ -2843,6 +2912,295 @@
     }
   }
 
+  // ---------------------------------------------------------------- explicación: los límites de PSO
+
+  /** Cambia la cantidad de partículas y deja el botón de la bandada en el estado correcto. */
+  function fijarParticulas(n) {
+    estado.n = n;
+    estado.nAnterior = 30;
+    $('r-n').value = Math.min(n, 100);
+    $('v-n').textContent = n.toLocaleString('es-CO');
+    const bandada = n >= PARTICULAS_BANDADA;
+    $('btn-bandada').classList.toggle('activo', bandada);
+    $('btn-bandada').textContent = bandada ? 'Volver a 30 partículas' : 'Bandada gigante: 2.000 partículas';
+  }
+
+  /** Tarjeta de la derecha con las limitaciones encontradas hasta ahora (y, opcionalmente, una tabla). */
+  function mostrarLimites(extra = '') {
+    $('resumen').innerHTML =
+      '<h4>Límites de PSO</h4><ol>' +
+      estado.limites.map((l) => `<li>${l}</li>`).join('') +
+      '</ol>' +
+      extra;
+    $('resumen').classList.add('visible');
+  }
+
+  function agregarLimite(texto, extra = '') {
+    estado.limites.push(texto);
+    mostrarLimites(extra);
+    Sonido.toque(10);
+  }
+
+  /** ¿El gBest llegó al óptimo verdadero? */
+  function llegoAlOptimo() {
+    const g = estado.enjambre.gBest;
+    return FUNCIONES[estado.funcion].optimos.some((m) => Math.hypot(g.x - m.x, g.y - m.y) < 0.05);
+  }
+
+  /**
+   * Corre 40 semillas con cada escenario (A, B y C) y cuenta cuántas llegan al óptimo.
+   * Se hace por partes para que la animación no se congele.
+   */
+  async function estadisticaEscenarios(id) {
+    const F = FUNCIONES[estado.funcion];
+    const resultado = {};
+    for (const [clave, esc] of Object.entries(ESCENARIOS)) {
+      let llegan = 0;
+      for (let s = 1; s <= 40; s++) {
+        const g = new Enjambre({ ...esc, funcion: estado.funcion, n: 30, semilla: s }).ejecutar();
+        if (F.optimos.some((m) => Math.hypot(g.x - m.x, g.y - m.y) < 0.05)) llegan++;
+        if (s % 5 === 0) {
+          await new Promise((r) => setTimeout(r, 0));
+          if (id !== historiaId) throw CANCELADO;
+        }
+      }
+      resultado[clave] = llegan;
+    }
+    return resultado;
+  }
+
+  /** Deja lista la cordillera con el escenario B, la semilla 7 y 30 partículas, y marca el óptimo y las trampas. */
+  function prepararCordillera() {
+    if (estado.funcion !== 'cordillera') {
+      estado.funcion = 'cordillera';
+      $('sel-funcion').value = 'cordillera';
+    }
+    prepararFuncion(); // se respeta si está elegido buscar el máximo o el mínimo
+    Object.assign(estado, { ...ESCENARIOS.B, decaimiento: false, escenario: 'B', semilla: 7 });
+    fijarParticulas(30);
+    estado.verFuerzas = false;
+    estado.fuerzasPaso = 4;
+    estado.modoCam = 'completa';
+    estado.limites = [];
+    sincronizarControles();
+    reiniciar();
+    const F = FUNCIONES.cordillera;
+    const max = maximizando();
+    estado.marcas = [
+      { ...F.optimo, tipo: 'optimo', texto: `${max ? 'la más alta' : 'el más profundo'} · ${fmt(F.optimo.f, 2)}` },
+      ...F.trampas.map((t) => ({ ...t, tipo: 'trampa', texto: `trampa · ${fmt(t.f, 2)}` })),
+    ];
+  }
+
+  // Capítulo 1: la cordillera, el óptimo verdadero y las trampas.
+  async function limitesCordillera({ narrar }) {
+    prepararCordillera();
+    estado.marcas = []; // en este capítulo se van mostrando una por una
+    estado.ocultarParticulas = true;
+    actualizarPanel();
+    dibujarGrafica();
+    Sonido.intensidad(0);
+
+    const F = FUNCIONES.cordillera;
+    const max = maximizando();
+    const opt = F.optimo;
+    const [t1, t2] = F.trampas;
+
+    mostrar3DGrande(true);
+    await narrar(
+      `Ahora, un terreno <b>difícil</b>: una cordillera con decenas de ${max ? 'cimas' : 'valles'}.<br>Buscamos ${max ? 'la cima más alta' : 'el valle más profundo'}.`,
+      `Ahora, un terreno difícil: una cordillera con decenas de ${max ? 'cimas' : 'valles'}. Buscamos ${max ? 'la cima más alta' : 'el valle más profundo'}.`,
+      5500
+    );
+    mostrar3DGrande(false);
+
+    estado.marcas = [{ ...opt, tipo: 'optimo', texto: `${max ? 'la más alta' : 'el más profundo'} · ${fmt(opt.f, 2)}` }];
+    Sonido.toque(12);
+    await narrar(
+      `${max ? 'La cima más alta' : 'El valle más profundo'} está aquí: f = <b>${fmt(opt.f, 2)}</b>.<br>Es <b>angost${max ? 'a' : 'o'}</b> y está escondid${max ? 'a' : 'o'}.`,
+      `${max ? 'La cima más alta' : 'El valle más profundo'} está aquí: mide ${numeroHablado(opt.f)}. Es angost${max ? 'a' : 'o'} y está escondid${max ? 'a' : 'o'}.`,
+      4500
+    );
+
+    estado.marcas.push(
+      { ...t1, tipo: 'trampa', texto: `trampa · ${fmt(t1.f, 2)}` },
+      { ...t2, tipo: 'trampa', texto: `trampa · ${fmt(t2.f, 2)}` }
+    );
+    Sonido.toque(6);
+    await narrar(
+      `Y estas son <b>trampas</b>: ${fmt(t1.f, 2)} y ${fmt(t2.f, 2)}.<br>Casi igual de ${max ? 'altas' : 'profundas'}, pero más anchas: mucho más fáciles de encontrar.`,
+      `Y estas son trampas: ${numeroHablado(t1.f)} y ${numeroHablado(t2.f)}. Casi igual de ${max ? 'altas' : 'profundas'}, pero más anchas, y mucho más fáciles de encontrar.`,
+      5500
+    );
+  }
+
+  // Capítulo 2: el enjambre cae en una trampa. Límite 1: no garantiza el óptimo global.
+  async function limitesTrampa({ narrar, hasta }) {
+    if (estado.funcion !== 'cordillera') prepararCordillera();
+    const F = FUNCIONES[estado.funcion];
+    const max = maximizando();
+    estado.semilla = 7;
+    sincronizarControles();
+    reiniciar();
+    estado.modoCam = 'completa';
+    estado.iterPorSegundo = 4;
+    estado.reproduciendo = true;
+    Sonido.intensidad(0.45);
+    await narrar(
+      `Soltamos <b>${estado.n} partículas</b> con la misma regla de siempre. Veamos qué encuentran.`,
+      `Soltamos ${estado.n} partículas, con la misma regla de siempre. Veamos qué encuentran.`,
+      4000
+    );
+    estado.modoCam = 'enjambre';
+    estado.iterPorSegundo = 12;
+    Sonido.intensidad(0.9);
+    await hasta(() => estado.notificado);
+    Sonido.intensidad(0);
+    estado.modoCam = 'completa';
+
+    const g = estado.enjambre.gBest;
+    if (!llegoAlOptimo()) {
+      await narrar(
+        `Terminó en f = <b>${fmt(g.f, 2)}</b>: se quedó en una trampa.<br>${max ? 'La cima' : 'El valle'} de ${fmt(F.optimo.f, 2)} nunca ${max ? 'la' : 'lo'} encontró.`,
+        `Terminó en ${numeroHablado(g.f)}: se quedó en una trampa. ${max ? 'La cima' : 'El valle'} de ${numeroHablado(F.optimo.f)} nunca ${max ? 'la' : 'lo'} encontró.`,
+        5000
+      );
+      if (usaMapaGL()) {
+        estado.verExploracion = true;
+        Sonido.barrido(true);
+        await narrar(
+          'En gris, todo lo que el enjambre <b>nunca visitó</b>. PSO solo conoce lo que explora.',
+          'En gris, todo lo que el enjambre nunca visitó. PSO solo conoce lo que explora.',
+          5000
+        );
+      }
+    } else {
+      await narrar(
+        `Esta vez llegó a f = <b>${fmt(g.f, 2)}</b>, pero muchas veces no lo logra.`,
+        `Esta vez llegó a ${numeroHablado(g.f)}, pero muchas veces no lo logra.`,
+        4500
+      );
+    }
+    agregarLimite('<b>No garantiza el óptimo global.</b> Se queda con lo mejor que vio, no con lo mejor que existe.');
+    await narrar(
+      '<b>Límite 1:</b> PSO no garantiza encontrar el óptimo global.<br>Se queda con lo mejor que vio, no con lo mejor que existe.',
+      'Primer límite: PSO no garantiza encontrar el óptimo global. Se queda con lo mejor que vio, no con lo mejor que existe.',
+      5500
+    );
+  }
+
+  // Capítulo 3: con otra semilla sí acierta; estadística de 40 corridas. Límites 2 y 3.
+  async function limitesAzar({ narrar, hasta, pausa }) {
+    if (estado.funcion !== 'cordillera') prepararCordillera();
+    const F = FUNCIONES[estado.funcion];
+    estado.semilla = F.semillaQueAcierta || 2;
+    sincronizarControles();
+    reiniciar();
+    estado.modoCam = 'completa';
+    estado.iterPorSegundo = 6;
+    estado.reproduciendo = true;
+    Sonido.intensidad(0.5);
+    await narrar(
+      `Ahora lo mismo, con otra semilla: la <b>${estado.semilla}</b>.<br>Mismo algoritmo, mismos parámetros; solo cambia el azar.`,
+      'Ahora lo mismo, pero con otra semilla. Mismo algoritmo, mismos parámetros: solo cambia el azar.',
+      4500
+    );
+    estado.modoCam = 'enjambre';
+    estado.iterPorSegundo = 14;
+    Sonido.intensidad(0.9);
+    await hasta(() => estado.notificado);
+    Sonido.intensidad(0);
+    const g = estado.enjambre.gBest;
+    await narrar(
+      llegoAlOptimo() ? `Esta vez <b>sí</b> lo encontró: f = ${fmt(g.f, 2)}.` : `Esta vez terminó en f = ${fmt(g.f, 2)}.`,
+      llegoAlOptimo() ? `Esta vez sí lo encontró: ${numeroHablado(g.f)}.` : `Esta vez terminó en ${numeroHablado(g.f)}.`,
+      3500
+    );
+    agregarLimite('<b>Depende del azar.</b> Con otra semilla, otro resultado: hay que correrlo varias veces.');
+    await narrar(
+      '<b>Límite 2:</b> el resultado depende del azar.<br>Por eso hay que correrlo varias veces.',
+      'Segundo límite: el resultado depende del azar. Por eso hay que correrlo varias veces.',
+      4500
+    );
+
+    // 40 corridas de cada escenario, calculadas en vivo mientras habla.
+    const calculo = estadisticaEscenarios(historiaId);
+    calculo.catch(() => {});
+    await narrar(
+      '¿Y cambiando los parámetros? Corramos <b>40 semillas</b> con cada escenario…',
+      '¿Y si cambiamos los parámetros? Corramos cuarenta semillas con cada escenario.',
+      3500
+    );
+    const r = await calculo;
+    const tabla =
+      '<table>' +
+      Object.entries(ESCENARIOS)
+        .map(([k, e]) => `<tr><td>Escenario ${k} · ${e.nombre}</td><td>${r[k]} de 40</td></tr>`)
+        .join('') +
+      '</table>';
+    agregarLimite('<b>Depende de los parámetros</b> (w, c₁, c₂), y ninguna combinación sirve para todo.', tabla);
+    await pausa(300);
+    await narrar(
+      `Llegó al óptimo: escenario A, <b>${r.A}</b> de 40; B, <b>${r.B}</b>; C, <b>${r.C}</b>.<br><b>Límite 3:</b> los parámetros importan, y aquí ninguno es confiable.`,
+      `Llegó al óptimo: con el escenario A, ${r.A} de cuarenta veces; con el B, ${r.B}; con el C, ${r.C}. Tercer límite: los parámetros importan, y en un terreno así ninguno es confiable.`,
+      7000
+    );
+  }
+
+  // Capítulo 4: una bandada gigante ayuda, pero cuesta mucho más. Límite 4 y cierre.
+  async function limitesCosto({ narrar, hasta }) {
+    if (estado.funcion !== 'cordillera') prepararCordillera();
+    estado.semilla = 7;
+    fijarParticulas(PARTICULAS_BANDADA);
+    sincronizarControles();
+    reiniciar();
+    estado.modoCam = 'completa';
+    estado.iterPorSegundo = 5;
+    estado.reproduciendo = true;
+    Sonido.barrido(true);
+    Sonido.intensidad(0.6);
+    await narrar(
+      `¿Y si usamos muchas más partículas? Una bandada de <b>${PARTICULAS_BANDADA.toLocaleString('es-CO')}</b>, con la semilla de la trampa.`,
+      `¿Y si usamos muchas más partículas? Una bandada de dos mil, con la misma semilla de la trampa.`,
+      5000
+    );
+    estado.modoCam = 'enjambre';
+    estado.iterPorSegundo = 12;
+    Sonido.intensidad(1);
+    await hasta(() => estado.notificado);
+    Sonido.intensidad(0);
+    estado.modoCam = 'completa';
+
+    const E = estado.enjambre;
+    const evaluaciones = E.evaluaciones.toLocaleString('es-CO');
+    const veces = Math.round(E.evaluaciones / 3030);
+    await narrar(
+      llegoAlOptimo()
+        ? `Con ${PARTICULAS_BANDADA.toLocaleString('es-CO')} partículas <b>sí</b> lo encontró…<br>pero evaluó la función <b>${evaluaciones}</b> veces, ${veces} veces más que con 30.`
+        : `Ni con ${PARTICULAS_BANDADA.toLocaleString('es-CO')} partículas lo encontró,<br>y evaluó la función <b>${evaluaciones}</b> veces, ${veces} veces más que con 30.`,
+      llegoAlOptimo()
+        ? `Con dos mil partículas sí lo encontró. Pero evaluó la función ${veces} veces más que con treinta.`
+        : `Ni con dos mil partículas lo encontró, y evaluó la función ${veces} veces más que con treinta.`,
+      6000
+    );
+    agregarLimite('<b>Mejorar cuesta.</b> Más partículas o iteraciones ayudan, pero multiplican las evaluaciones, y ni así hay garantía.');
+    await narrar(
+      '<b>Límite 4:</b> mejorar la probabilidad cuesta muchas más evaluaciones,<br>y en problemas reales cada evaluación puede ser cara.',
+      'Cuarto límite: mejorar la probabilidad cuesta muchas más evaluaciones. Y en problemas reales, cada evaluación puede ser cara.',
+      5500
+    );
+
+    mostrarLimites(
+      '<p class="pie"><b>Cómo se usa bien:</b> correrlo varias veces, ajustar los parámetros al problema y, si hace falta, ' +
+        'combinarlo con una búsqueda local que refine la mejor solución.</p>'
+    );
+    await narrar(
+      'Aun así, PSO es muy útil: no necesita derivadas y encuentra <b>buenas</b> soluciones rápido.<br>La clave es recordar que es una <b>heurística</b>: no promete la mejor.',
+      'Aun así, PSO es muy útil: no necesita derivadas y encuentra buenas soluciones rápido. La clave es recordar que es una heurística: no promete la mejor.',
+      7000
+    );
+  }
+
   // ---------------------------------------------------------------- eventos
 
   function enlazarParametro(id, clave, decimales) {
@@ -2934,6 +3292,7 @@
   $('btn-modo-sim').addEventListener('click', iniciarSimulacion);
   $('btn-modo-reto').addEventListener('click', iniciarReto);
   $('btn-historia').addEventListener('click', iniciarHistoria);
+  $('btn-limites').addEventListener('click', iniciarLimites);
   document.querySelectorAll('[data-capitulo]').forEach((b) => {
     b.addEventListener('click', () => irACapitulo(Number(b.dataset.capitulo)));
   });
@@ -2969,6 +3328,19 @@
     if (visible && !usaMapaGL()) avisoVoz('El mapa de exploración necesita la tarjeta gráfica (WebGL), que no está disponible en este navegador.', 5000);
   }
 
+  /** Cambia entre buscar el máximo y el mínimo (en las funciones que lo permiten, como la cordillera). */
+  function cambiarObjetivo(objetivo) {
+    const F = FUNCIONES[estado.funcion];
+    if (!F.objetivos) return;
+    if (estado.modo !== 'sim') iniciarSimulacion();
+    window.PSO.fijarObjetivo(estado.funcion, objetivo);
+    prepararFuncion();
+    reiniciar();
+    subtitulo(`<b>${F.nombre}</b>: ${minusculaInicial(F.descripcion)}`, 4500);
+    mostrar3DGrande(true, 4000);
+  }
+
+  $('sel-objetivo').addEventListener('change', (ev) => cambiarObjetivo(ev.target.value));
   $('btn-bandada').addEventListener('click', alternarBandada);
   $('chk-relieve').addEventListener('change', (ev) => {
     estado.verRelieve = ev.target.checked;
@@ -3095,7 +3467,7 @@
     (ev) => {
       desbloquearSonido(); // el navegador solo permite sonido después de una interacción
       const enSonido = ev.target.closest('#sel-voz, #r-volumen, #btn-probar-voz');
-      const enHistoria = ev.target.closest('#btn-historia, [data-capitulo]');
+      const enHistoria = ev.target.closest('#btn-historia, #btn-limites, [data-capitulo]');
       // Girar o ampliar el 3D no interrumpe la narración ni saca del modo cine.
       const en3D = ev.target.closest('#vista3d, #vista3d-grande, #btn-ampliar-3d');
       if (estado.historia && !enSonido && !enHistoria && !en3D) cancelarHistoria();
@@ -3118,6 +3490,7 @@
     desbloquearSonido();
     if (tecla === 'f') return pantallaCompleta();
     if (tecla === 'h') return iniciarHistoria();
+    if (tecla === 'l') return iniciarLimites();
     if (tecla === 'm') return alternarSilencio();
     if (tecla === 'd') return alternar3DGrande(); // 3D grande; no interrumpe la narración
     if (tecla === 'escape') {
@@ -3153,6 +3526,7 @@
     else if (tecla === 'g') alternarVistas($('lateral').classList.contains('oculto'));
     else if (tecla === 'x') alternarExploracion(!estado.verExploracion);
     else if (tecla === 'b') alternarBandada();
+    else if (tecla === 'o' && FUNCIONES[estado.funcion].objetivos) cambiarObjetivo(maximizando() ? 'min' : 'max');
     else if (tecla === 'c') {
       estado.camAuto = !estado.camAuto;
       $('chk-camara').checked = estado.camAuto;
@@ -3294,6 +3668,9 @@
     estado.funcion = funcionPedida;
     $('sel-funcion').value = funcionPedida;
   }
+  // Y con objetivo: index.html?funcion=cordillera&objetivo=min
+  const objetivoPedido = new URLSearchParams(location.search).get('objetivo');
+  if (objetivoPedido) window.PSO.fijarObjetivo(estado.funcion, objetivoPedido);
   prepararFuncion();
   sincronizarControles();
   reiniciar();

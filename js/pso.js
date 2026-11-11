@@ -104,6 +104,75 @@
       Math.exp(-Math.pow(x + 1, 2) - y * y) / 3,
   };
 
+  /*
+   * Cordillera: 34 montañas y valles (gaussianas) más tres ondulaciones que agregan
+   * relieve fino. Tiene 37 cimas y 37 valles locales. La cima más alta es angosta y
+   * está escondida; cerca hay una cima ancha casi igual de alta (7,26 contra 8,62) que
+   * atrae al enjambre. Lo mismo pasa con el valle más profundo.
+   * Cada monte es [x, y, altura (negativa = valle), ancho].
+   */
+  const MONTES = [
+    [6.4, -5.1, 8.6, 0.55], [-4.8, 4.2, 7.7, 1.6], [1.2, 7.3, 7.1, 1], [-6.7, -6.2, -8.6, 0.55],
+    [5.5, 5.8, -7.6, 1.5], [-1.5, -2.5, -6.9, 1.1], [2.97, 2.18, 2.8, 0.96], [2.2, -2.05, 2.65, 0.75],
+    [-1.72, 7.74, 2.01, 0.67], [8.34, 8.14, -3, 0.71], [8.6, 3.25, -3.31, 0.57], [9.07, -5.85, -4.99, 0.71],
+    [-0.13, -5.94, -4.16, 1.07], [-0.7, 0.03, -4.76, 0.9], [-2.33, -8.96, 2.29, 1.12], [-6.06, -0.28, 3.04, 1.12],
+    [7.34, -8.91, -4.23, 1.08], [0.95, -8.84, -5.12, 1.13], [-9.18, -4.74, -5.3, 0.88], [-6.79, 2.35, -2.73, 0.69],
+    [-3.3, -6.2, -3.32, 0.59], [5.8, 8.91, 2.6, 0.66], [6.91, 0.14, 4.36, 1], [-6.74, -3.01, 3.53, 0.62],
+    [-5.18, 6.85, -5.19, 0.98], [-6.81, -8.96, 2.04, 0.96], [-6.9, 8.93, 3.83, 0.86], [-2.13, 4.48, -2.05, 1.15],
+    [-7.68, 5.45, -5.18, 0.99], [3.05, -5.54, 2.47, 1.09], [4.72, -1.3, -5.44, 0.94], [3.95, -9.07, 5.43, 0.59],
+    [-8.78, -0.49, 4.56, 0.74], [9.1, -1.5, 2.78, 0.87],
+  ];
+  const ONDAS = [0.5, 0.3, 0.2]; // amplitudes de las tres ondulaciones (las frecuencias van en la fórmula)
+
+  function cordillera(x, y) {
+    let s =
+      ONDAS[0] * Math.sin(0.9 * x) * Math.cos(0.8 * y) +
+      ONDAS[1] * Math.sin(2.1 * x + 1.3 * y) * Math.cos(1.1 * x - 1.7 * y) +
+      ONDAS[2] * Math.sin(3.4 * x + 0.5) * Math.sin(3.1 * y);
+    for (const [a, b, h, w] of MONTES) s += h * Math.exp(-((x - a) * (x - a) + (y - b) * (y - b)) / (2 * w * w));
+    return s;
+  }
+
+  FUNCIONES.cordillera = {
+    formula: 'f(x,y) = Σ hᵢ·e^(−((x−aᵢ)²+(y−bᵢ)²)/2wᵢ²) + 3 ondulaciones',
+    dominio: [-10, 10],
+    montes: MONTES,
+    ondas: ONDAS,
+    f: cordillera,
+    // Se puede buscar el máximo o el mínimo: cada objetivo tiene su nombre, descripción y óptimo.
+    objetivos: {
+      max: {
+        nombre: 'Cordillera (máximo)',
+        descripcion: 'Es una cordillera con decenas de cimas: buscamos la más alta, que es angosta y está escondida, y hay otra muy ancha casi igual de alta.',
+        optimos: [{ x: 6.366644, y: -5.102343, f: 8.61844471 }],
+        // Las dos cimas locales donde el enjambre suele quedarse (para la explicación de límites).
+        trampas: [{ x: 1.24, y: 7.36, f: 7.547 }, { x: -4.84, y: 4.16, f: 7.273 }],
+        semillaQueAcierta: 2, // con 30 partículas y el escenario B, esta semilla sí llega al máximo
+      },
+      min: {
+        nombre: 'Cordillera (mínimo)',
+        descripcion: 'Es una cordillera con decenas de valles: buscamos el más profundo, que es angosto, y hay otros muy anchos casi igual de profundos.',
+        optimos: [{ x: -6.737344, y: -6.213037, f: -8.64562954 }],
+        trampas: [{ x: 5.72, y: 5.84, f: -7.799 }, { x: -1.44, y: -2.4, f: -7.001 }],
+        semillaQueAcierta: 9,
+      },
+    },
+  };
+
+  /**
+   * Cambia entre buscar el máximo o el mínimo en las funciones que permiten ambos
+   * (por ahora, la cordillera). Devuelve false si la función no tiene esa opción.
+   */
+  function fijarObjetivo(clave, objetivo) {
+    const F = FUNCIONES[clave];
+    if (!F || !F.objetivos || !F.objetivos[objetivo]) return false;
+    Object.assign(F, { objetivo }, F.objetivos[objetivo]);
+    F.optimo = F.optimos[0];
+    return true;
+  }
+
+  fijarObjetivo('cordillera', 'max');
+
   for (const F of Object.values(FUNCIONES)) {
     F.objetivo = F.objetivo || 'min';
     F.optimo = F.optimos[0];
@@ -288,5 +357,5 @@
     }
   }
 
-  return { Enjambre, FUNCIONES, ESCENARIOS, crearRng };
+  return { Enjambre, FUNCIONES, ESCENARIOS, crearRng, fijarObjetivo };
 });
