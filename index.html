@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Enjambre de Partículas</title>
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+  <main id="escenario">
+    <div id="marco">
+      <canvas id="mapa-gl" aria-hidden="true"></canvas>
+      <canvas id="lienzo" aria-label="Simulación del enjambre sobre el mapa de la función"></canvas>
+      <div id="caja-3d-grande">
+        <canvas id="vista3d-grande-gl" aria-hidden="true"></canvas>
+        <canvas id="vista3d-grande" aria-hidden="true"></canvas>
+      </div>
+      <div id="hud-iter" class="hud"></div>
+      <div id="hud-gbest" class="hud"></div>
+      <div id="hud-zoom" class="hud"></div>
+      <div id="hud-capitulo" class="hud"></div>
+      <div id="subtitulo" role="status"></div>
+      <div id="aviso-voz" role="alert"></div>
+      <div id="resumen" role="status"></div>
+      <div id="aviso" class="oculto" role="status">
+        <h2 id="aviso-titulo"></h2>
+        <p id="aviso-texto"></p>
+        <button id="aviso-boton" class="primario oculto" type="button"></button>
+      </div>
+    </div>
+
+    <div id="lateral">
+      <section class="tarjeta">
+        <h3>La función en 3D <small id="leyenda-3d">(altura = log(1 + f))</small></h3>
+        <div id="caja-3d">
+          <canvas id="vista3d-gl" aria-hidden="true"></canvas>
+          <canvas id="vista3d" aria-label="Superficie de la función en tres dimensiones con las partículas"></canvas>
+        </div>
+        <div class="pie-3d">
+          <span id="pista-3d">Arrastra para girar · rueda para acercar</span>
+          <button id="btn-ampliar-3d" type="button">Ampliar</button>
+        </div>
+      </section>
+      <section class="tarjeta">
+        <h3 id="corte-titulo">Corte de la función</h3>
+        <canvas id="corte" aria-label="Valor de la función a lo largo de una línea"></canvas>
+      </section>
+      <section class="tarjeta">
+        <h3 id="formula-titulo">Valor de la función</h3>
+        <p id="formula-viva" class="formula-viva"></p>
+      </section>
+    </div>
+  </main>
+
+  <aside id="panel">
+    <header>
+      <p class="sobretitulo">Optimización por</p>
+      <h1>Enjambre de <span>Partículas</span></h1>
+      <p id="formula" class="formula"></p>
+    </header>
+
+    <button id="btn-historia" type="button" class="historia">▶ Explicación narrada</button>
+    <div class="capitulos" aria-label="Capítulos de la explicación (Av Pág / Re Pág)">
+      <button type="button" data-capitulo="0"><b>1</b>Terreno</button>
+      <button type="button" data-capitulo="1"><b>2</b>Inicio</button>
+      <button type="button" data-capitulo="2"><b>3</b>Fuerzas</button>
+      <button type="button" data-capitulo="3"><b>4</b>Resultado</button>
+    </div>
+    <nav class="modos" aria-label="Modo">
+      <button id="btn-modo-sim" type="button" class="activo">Simulación</button>
+      <button id="btn-modo-reto" type="button">Tú vs. el enjambre</button>
+    </nav>
+
+    <section class="cifras">
+      <div><span class="etiqueta">Iteración</span><strong id="est-iter">0 / 100</strong></div>
+      <div><span class="etiqueta">Mejor f (gBest)</span><strong id="est-gbest">—</strong></div>
+      <div><span class="etiqueta">Posición gBest</span><strong id="est-pos">—</strong></div>
+      <div><span class="etiqueta">Evaluaciones</span><strong id="est-evals">0</strong></div>
+    </section>
+    <div class="barra"><div id="barra"></div></div>
+
+    <section>
+      <h3>Convergencia <small>(distancia al óptimo |f − f*|, escala log)</small></h3>
+      <canvas id="grafica"></canvas>
+      <p class="leyenda"><i class="chip salmon"></i>gBest <i class="chip teal"></i>promedio del enjambre</p>
+    </section>
+
+    <section class="controles">
+      <button id="btn-play" type="button" class="primario">▶ Iniciar</button>
+      <button id="btn-paso" type="button">Paso</button>
+      <button id="btn-reiniciar" type="button">Reiniciar</button>
+    </section>
+
+    <section id="info-reto" class="solo-reto">
+      <h3>Reto</h3>
+      <p>Intentos: <strong id="reto-intentos">0 / 10</strong></p>
+      <p>Tu mejor f: <strong id="reto-mejor">—</strong></p>
+    </section>
+
+    <section class="solo-sim">
+      <h3>Escenarios</h3>
+      <div class="escenarios">
+        <button type="button" data-escenario="A"><b>A</b> Exploración</button>
+        <button type="button" data-escenario="B" class="activo"><b>B</b> Equilibrio</button>
+        <button type="button" data-escenario="C"><b>C</b> Prematura</button>
+      </div>
+      <button id="btn-bandada" type="button" class="ancho">Bandada gigante: 2.000 partículas</button>
+    </section>
+
+    <section id="info-particula" class="oculto">
+      <h3 id="particula-titulo">Partícula</h3>
+      <ul class="fuerzas">
+        <li><i class="chip azul"></i>Inercia w·v <strong id="fz-inercia">—</strong></li>
+        <li><i class="chip verde"></i>Cognitiva c₁r₁(pBest − x) <strong id="fz-cognitiva">—</strong></li>
+        <li><i class="chip salmon"></i>Social c₂r₂(gBest − x) <strong id="fz-social">—</strong></li>
+        <li><i class="chip blanco"></i>Salto real <strong id="fz-salto">—</strong></li>
+      </ul>
+    </section>
+
+    <details class="solo-sim" open>
+      <summary>Parámetros</summary>
+      <label>w (inercia) <output id="v-w">0.70</output>
+        <input id="r-w" type="range" min="0" max="1.2" step="0.05" value="0.7"></label>
+      <label>c₁ (cognitiva) <output id="v-c1">1.5</output>
+        <input id="r-c1" type="range" min="0" max="3" step="0.1" value="1.5"></label>
+      <label>c₂ (social) <output id="v-c2">1.5</output>
+        <input id="r-c2" type="range" min="0" max="3" step="0.1" value="1.5"></label>
+      <label class="fila"><input id="chk-decaimiento" type="checkbox"> Decaimiento de w (0.9 → 0.4)</label>
+      <label>Partículas <output id="v-n">30</output>
+        <input id="r-n" type="range" min="5" max="100" step="1" value="30"></label>
+      <label>Velocidad de la animación <output id="v-vel">6 it/s</output>
+        <input id="r-vel" type="range" min="1" max="30" step="1" value="6"></label>
+      <div class="dos">
+        <label>Función
+          <select id="sel-funcion">
+            <option value="rastrigin">Rastrigin</option>
+            <option value="ackley">Ackley</option>
+            <option value="himmelblau">Himmelblau</option>
+            <option value="griewank">Griewank</option>
+            <option value="esfera">Esfera</option>
+            <option value="picos">Picos (buscar el máximo)</option>
+          </select></label>
+        <label>Semilla
+          <span class="semilla"><input id="in-semilla" type="number" min="1" max="999999" value="7"><button id="btn-semilla" type="button" title="Otra semilla">Otra</button></span></label>
+      </div>
+    </details>
+
+    <details class="solo-sim" open>
+      <summary>Qué mostrar</summary>
+      <label class="fila"><input id="chk-cine" type="checkbox" checked> Modo cine al narrar (oculta estos controles)</label>
+      <label class="fila"><input id="chk-vistas" type="checkbox" checked> Vista 3D y corte</label>
+      <label class="fila"><input id="chk-camara" type="checkbox" checked> Cámara que sigue al enjambre</label>
+      <label class="fila"><input id="chk-estelas" type="checkbox" checked> Estelas</label>
+      <label class="fila"><input id="chk-relieve" type="checkbox" checked> Relieve en el mapa</label>
+      <label class="fila"><input id="chk-exploracion" type="checkbox"> Mapa de exploración (gris = nunca visitado)</label>
+      <label class="fila"><input id="chk-pbest" type="checkbox"> pBest de cada partícula</label>
+      <label class="fila"><input id="chk-fuerzas" type="checkbox"> Fuerzas de la partícula seleccionada</label>
+      <label class="fila"><input id="chk-minimo" type="checkbox" checked> Mínimo global</label>
+    </details>
+
+    <details open>
+      <summary>Sonido</summary>
+      <label class="fila"><input id="chk-voz" type="checkbox" checked> Voz narradora</label>
+      <label class="fila"><input id="chk-musica" type="checkbox" checked> Música de fondo</label>
+      <label class="fila"><input id="chk-efectos" type="checkbox" checked> Efectos</label>
+      <label>Volumen <output id="v-volumen">80 %</output>
+        <input id="r-volumen" type="range" min="0" max="1" step="0.05" value="0.8"></label>
+      <label>Voz
+        <select id="sel-voz"></select></label>
+      <button id="btn-probar-voz" type="button" class="ancho">Probar voz</button>
+      <p id="nota-voz" class="nota"></p>
+    </details>
+
+    <footer class="atajos">
+      <kbd>H</kbd> explicación · <kbd>Av Pág</kbd><kbd>Re Pág</kbd> capítulos · <kbd>Espacio</kbd> iniciar/pausar · <kbd>N</kbd> paso · <kbd>R</kbd> reiniciar ·
+      <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> escenarios · <kbd>C</kbd> cámara · <kbd>G</kbd> vista 3D · <kbd>D</kbd> 3D grande · <kbd>X</kbd> exploración · <kbd>B</kbd> bandada · <kbd>V</kbd> fuerzas · <kbd>J</kbd> reto · <kbd>M</kbd> silenciar · <kbd>F</kbd> pantalla completa · <kbd>Esc</kbd> salir del modo cine
+    </footer>
+  </aside>
+
+  <div id="pista-cine">Esc: mostrar los controles</div>
+
+  <script src="js/pso.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/mapa-gl.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
